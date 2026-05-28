@@ -8,7 +8,8 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 
-from data_hf.data_loading import prepare_data
+from data_hf.data_loading import prepare_data as prepare_data_hf
+from data.data_loading import prepare_data as prepare_data_local
 from model.model_train import train_and_val_model
 from utils.determinism_helper import set_deterministic_seeds
 from torch.utils.data import ConcatDataset, DataLoader
@@ -26,8 +27,9 @@ def parse_args():
     argparser.add_argument('--wandb_run', type=str, default="best possible run", help='wandb run name')
     argparser.add_argument('--seed', type=int, default=42, help='random seed')
     argparser.add_argument('--device', type=str, default="cuda", help='device to use (cuda or cpu)')
-    argparser.add_argument('--dataset', type=str, default="gorilla-watch/Gorilla-SPAC-Wild", help='HuggingFace dataset id')
+    argparser.add_argument('--dataset', type=str, default="gorilla-watch/Gorilla-SPAC-Wild", help='HuggingFace dataset id or local path')
     argparser.add_argument('--dataset_config', type=str, default="face", help='dataset configuration')
+    argparser.add_argument('--split_path', type=str, default=None, help='path to JSON file with train/val/test splits (for local datasets)')
     argparser.add_argument('--num_workers', type=int, default=2, help='number of workers')
     argparser.add_argument('--best_model_path', type=str, default="saved_checkpoints/20260304_120000.pth", help='best model path')
     argparser.add_argument('--backbone_name', type=str, default="vit_giant_patch14_dinov2.lvd142m", help='backbone name')
@@ -75,6 +77,14 @@ def ddp_setup(rank, world_size):
 def ddp_cleanup():
     dist.destroy_process_group()
 
+def is_local_path(path):
+    """Detect if the given path is a local filesystem path rather than a HuggingFace dataset ID.
+    
+    A HuggingFace dataset ID has format 'org/dataset' (contains / but doesn't start with /).
+    A local path either starts with / (absolute) or doesn't contain / (relative).
+    """
+    return path.startswith("/") or "/" not in path
+
 def main(rank, world_size, config):
     config.device = f"cuda:{rank}" if torch.cuda.is_available() else "cpu"
     
@@ -93,17 +103,49 @@ def main(rank, world_size, config):
         )
     set_deterministic_seeds(config.seed)
 
-    data_splits = prepare_data(
-        data_path=config.dataset,
-        dataset_config=config.dataset_config,
-        batch_size=config.batch_size,
-        num_workers=config.num_workers,
-        seed=config.seed,
-        image_size=config.image_size,
-        k=config.k,
-        verbose=(not config.use_ddp or rank==0),
-        parallelize=config.use_ddp,
-    )
+    # Use appropriate data loading based on input type
+    if is_local_path(config.dataset):
+        if not config.use_ddp or rank == 0:
+            print(f"Loading from local path: {config.dataset}")
+        # Local path: use data/ directory loader
+        data_result = prepare_data_local(
+            data_path=config.dataset,
+            split_path=config.split_path,
+            batch_size=config.batch_size,
+            num_workers=config.num_workers,
+            train_val_ratio=0.2,
+            seed=config.seed,
+            image_size=config.image_size,
+            k=config.k,
+            verbose=(not config.use_ddp or rank==0),
+            parallelize=config.use_ddp,
+            perform_train_val_split=False,
+        )
+        # Normalize local loader output to dict format
+        if len(data_result) == 8:  # with train_val split
+            train_set, train_loader, _, _, val_set, val_loader, test_set, test_loader = data_result
+        else:  # without train_val split
+            train_set, train_loader, val_set, val_loader, test_set, test_loader = data_result
+        data_splits = {
+            "train": (train_set, train_loader),
+            "val": (val_set, val_loader),
+            "test": (test_set, test_loader),
+        }
+    else:
+        if not config.use_ddp or rank == 0:
+            print(f"Loading from HuggingFace: {config.dataset}")
+        # HuggingFace dataset ID: use data_hf/ directory loader
+        data_splits = prepare_data_hf(
+            data_path=config.dataset,
+            dataset_config=config.dataset_config,
+            batch_size=config.batch_size,
+            num_workers=config.num_workers,
+            seed=config.seed,
+            image_size=config.image_size,
+            k=config.k,
+            verbose=(not config.use_ddp or rank==0),
+            parallelize=config.use_ddp,
+        )
 
     # Extract datasets and loaders from dictionary
     train_set, train_loader = data_splits["train"]

@@ -77,7 +77,6 @@ def main():
         dataset_config=config.dataset_config,
         batch_size=config.batch_size,
         num_workers=config.num_workers,
-        train_val_ratio=config.train_val_ratio,
         seed=config.seed,
         image_size=config.image_size,
         k=config.k,

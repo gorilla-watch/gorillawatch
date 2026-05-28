@@ -4,12 +4,17 @@ from torch.utils.data import Dataset
 from PIL import Image
 
 def extract_labels_and_videos(file_list):
-    """Extract (labels, videos) from a list of file paths."""
+    """Extract (labels, videos, dates, cameras) from a list of file paths.
+    
+    Expected filename format: label_camera_date_vidIdx_...
+    """
     file_names = [os.path.splitext(os.path.basename(f))[0] for f in file_list]
     parts_list = [name.split("_") for name in file_names]
     labels = [parts[0] for parts in parts_list]
+    cameras = [parts[1] for parts in parts_list]
+    dates = [parts[2] for parts in parts_list]
     videos = ["_".join(parts[1:4]) for parts in parts_list]
-    return labels, videos
+    return labels, videos, dates, cameras
 
 class GorillaDataset(Dataset):
     """
@@ -28,14 +33,14 @@ class GorillaDataset(Dataset):
         images_for_standard_knn (list): List of indices for images qualified as queries for standard KNN
     """
     def __init__(self, root_dir, file_list, transform=None, k=5,
-                 label_to_idx=None, video_to_idx=None):
+                 label_to_idx=None, video_to_idx=None, date_to_idx=None, camera_to_idx=None):
         self.root_dir = root_dir
         self.file_list = file_list
         self.transform = transform
         self.k = k
 
         self.images = [os.path.join(root_dir, f) for f in file_list]
-        self.labels, self.videos = extract_labels_and_videos(self.images)
+        self.labels, self.videos, self.dates, self.cameras = extract_labels_and_videos(self.images)
 
         distinct_encounters = set(f"{label}, {video}" for label, video in zip(self.labels, self.videos))
         print(f"Found {len(distinct_encounters)} distinct encounters in dataset.")
@@ -44,14 +49,24 @@ class GorillaDataset(Dataset):
             label_to_idx = {label: idx for idx, label in enumerate(sorted(set(self.labels)))}
         if video_to_idx is None:
             video_to_idx = {video: idx for idx, video in enumerate(sorted(set(self.videos)))}
+        if date_to_idx is None:
+            date_to_idx = {date: idx for idx, date in enumerate(sorted(set(self.dates)))}
+        if camera_to_idx is None:
+            camera_to_idx = {camera: idx for idx, camera in enumerate(sorted(set(self.cameras)))}
 
         self.label_to_idx = label_to_idx
         self.video_to_idx = video_to_idx
+        self.date_to_idx = date_to_idx
+        self.camera_to_idx = camera_to_idx
         self.idx_to_label = {idx: label for label, idx in label_to_idx.items()}
         self.idx_to_video = {idx: video for video, idx in video_to_idx.items()}
+        self.idx_to_date = {idx: date for date, idx in date_to_idx.items()}
+        self.idx_to_camera = {idx: camera for camera, idx in camera_to_idx.items()}
 
         self.labels = [self.label_to_idx[label] for label in self.labels]
         self.videos = [self.video_to_idx[video] for video in self.videos]
+        self.dates = [self.date_to_idx[date] for date in self.dates]
+        self.cameras = [self.camera_to_idx[camera] for camera in self.cameras]
 
         # Organize for KNN filtering
         data_by_label = defaultdict(lambda: {"images": [], "videos": defaultdict(list)})
@@ -77,7 +92,9 @@ class GorillaDataset(Dataset):
         img_path = self.images[idx]
         label = self.labels[idx]
         video = self.videos[idx]
+        date = self.dates[idx]
+        camera = self.cameras[idx]
         image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)
-        return image, label, video
+        return image, label, video, date, camera
