@@ -37,7 +37,7 @@ def parse_args():
     argparser.add_argument('--pretrained_weights_path', type=str, default="pretrained_weights/vit_giant_patch14_dinov2.lvd142m224.pth", help='pretrained weights path')
     argparser.add_argument('--gradient_accumulation_steps', type=int, default=6, help='gradient accumulation steps')
     argparser.add_argument('--l2_reg', type=float, default=0.0059, help='L2 regularization')
-    argparser.add_argument('--l2sp_reg', type=float, default=0.00000013, help='L2SP regularization')
+    argparser.add_argument('--l2sp_reg', type=float, default=0.000013, help='L2SP regularization')
     argparser.add_argument('--image_size', type=int, default=518, help='image size')
     argparser.add_argument('--batch_size', type=int, default=8, help='batch size')
     argparser.add_argument('--lr', type=float, default=0.0000019, help='learning rate')
@@ -180,8 +180,8 @@ def main(rank, world_size, config):
 
     if not config.use_ddp or rank == 0:
         wandb.log({
-            "knn_cv_accuracy_micro": micro_accuracy,
-            "knn_cv_accuracy_macro": macro_accuracy
+            "val/final/accuracy/micro": micro_accuracy,
+            "val/final/accuracy/macro": macro_accuracy
         })
         wandb.finish()
     
