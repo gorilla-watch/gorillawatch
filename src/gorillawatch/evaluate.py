@@ -28,6 +28,8 @@ def parse_args():
     argparser.add_argument('--backbone_name', type=str, default="vit_small_patch14_dinov2.lvd142m", help='backbone model name from timm')
     argparser.add_argument('--evaluate_model_path', type=str, default="", help='path to fine-tuned checkpoint (optional, uses pre-trained if not provided)')
     argparser.add_argument('--cross_video_only', action='store_true', help='use cross-video masking only (default is cross-encounter: same camera+date)')
+    argparser.add_argument('--pool_tracklets', action='store_true', help='pool embeddings by tracklet (class+video) for evaluation')
+    argparser.add_argument('--pooling_method', type=str, default='average', choices=['average', 'max', 'median'], help='pooling method for tracklets')
     return argparser.parse_args()
 
 def setup_paths(config):
@@ -43,7 +45,8 @@ def main():
         "Config loaded: "
         f"run={config.wandb_run}, backbone={config.backbone_name}, "
         f"model_path={'set' if config.evaluate_model_path else 'none'}, "
-        f"batch_size={config.batch_size}, workers={config.num_workers}, image_size={config.image_size}, k={config.k}"
+        f"batch_size={config.batch_size}, workers={config.num_workers}, image_size={config.image_size}, k={config.k}, "
+        f"pool_tracklets={config.pool_tracklets}, pooling_method={config.pooling_method if config.pool_tracklets else 'N/A'}"
     )
 
     print("Setting deterministic seeds")
@@ -65,10 +68,10 @@ def main():
         artifact = wandb.Artifact('used_model', type='model')
         artifact.add_file(config.evaluate_model_path)  
         run.log_artifact(artifact)
-        wandb.log({"Model": f"{config.evaluate_model_path}"})
+        wandb.log({"model/name": f"{config.evaluate_model_path}"})
     else:
         print(f"Using pre-trained backbone weights from timm: {config.backbone_name}")
-        wandb.log({"Model": f"Pre-trained: {config.backbone_name}"})
+        wandb.log({"model/name": f"Pre-trained: {config.backbone_name}"})
 
     print("Preparing data splits and dataloaders (this can take time on first run)")
     data_start = time.time()
@@ -126,16 +129,28 @@ def main():
         
         split_start = time.time()
         cross_encounter = not config.cross_video_only  # Default is cross-encounter, flag disables it
-        micro_accuracy, macro_accuracy = evaluate_model(config.evaluate_model_path, loader, dataset, config, gallery_loader, split=split, verbose=True, cross_encounter=cross_encounter)
+        micro_accuracy, macro_accuracy, tracklet_micro_accuracy, tracklet_macro_accuracy = evaluate_model(
+            config.evaluate_model_path, loader, dataset, config, gallery_loader, split=split, verbose=True, 
+            cross_encounter=cross_encounter, pool_tracklets=config.pool_tracklets, 
+            pooling_method=config.pooling_method
+        )
         split_duration = time.time() - split_start
         print(f"Finished split='{split}' in {split_duration:.1f}s")
-        print(f"  Micro accuracy: {micro_accuracy:.4f}")
-        print(f"  Macro accuracy: {macro_accuracy:.4f}")
+        print(f"  Image-based Micro accuracy: {micro_accuracy:.4f}")
+        print(f"  Image-based Macro accuracy: {macro_accuracy:.4f}")
+        if config.pool_tracklets:
+            print(f"  Tracklet-based Micro accuracy: {tracklet_micro_accuracy:.4f}")
+            print(f"  Tracklet-based Macro accuracy: {tracklet_macro_accuracy:.4f}")
         wandb.log({
-            f"{split}/knn_cv_accuracy_micro": micro_accuracy,
-            f"{split}/knn_cv_accuracy_macro": macro_accuracy,
-            f"{split}/split_duration": split_duration
+            f"{split}/accuracy/micro": micro_accuracy,
+            f"{split}/accuracy/macro": macro_accuracy,
+            f"{split}/duration": split_duration
         })
+        if config.pool_tracklets:
+            wandb.log({
+                f"{split}/tracklet/accuracy/micro": tracklet_micro_accuracy,
+                f"{split}/tracklet/accuracy/macro": tracklet_macro_accuracy,
+            })
 
     total_duration = time.time() - total_start
     print(f"Evaluation script completed in {total_duration:.1f}s")
