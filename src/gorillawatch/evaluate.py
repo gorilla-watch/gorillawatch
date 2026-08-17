@@ -7,6 +7,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from data_hf.data_loading import prepare_data
 from model.model_evaluation import evaluate_model
+from model.hf_checkpoint import resolve_hf_checkpoint
 from utils.determinism_helper import set_deterministic_seeds
 
 
@@ -27,6 +28,8 @@ def parse_args():
     argparser.add_argument('--k', type=int, default=5, help='number of neighbors')
     argparser.add_argument('--backbone_name', type=str, default="vit_small_patch14_dinov2.lvd142m", help='backbone model name from timm')
     argparser.add_argument('--evaluate_model_path', type=str, default="", help='path to fine-tuned checkpoint (optional, uses pre-trained if not provided)')
+    argparser.add_argument('--hf_model', type=str, default="", help='published checkpoint to evaluate: HuggingFace repo id (e.g. gorilla-watch/GorillaWatch-DINOv2-Large) or a local directory holding config.json + model.safetensors. Overrides --backbone_name, --image_size and --evaluate_model_path.')
+    argparser.add_argument('--hf_revision', type=str, default=None, help='revision (branch, tag or commit sha) of --hf_model')
     argparser.add_argument('--cross_video_only', action='store_true', help='use cross-video masking only (default is cross-encounter: same camera+date)')
     argparser.add_argument('--pool_tracklets', action='store_true', help='pool embeddings by tracklet (class+video) for evaluation')
     argparser.add_argument('--pooling_method', type=str, default='average', choices=['average', 'max', 'median'], help='pooling method for tracklets')
@@ -41,6 +44,21 @@ def main():
     total_start = time.time()
     print("Starting evaluation script")
     config = parse_args()
+
+    # image_size and backbone name are pulled from the given HugginfFace model, to avoid mismatches
+    if config.hf_model:
+        hf_config, config.evaluate_model_path = resolve_hf_checkpoint(
+            config.hf_model, revision=config.hf_revision
+        )
+        config.backbone_name = hf_config["backbone_name"]
+        config.image_size = hf_config["img_size"]
+        print(
+            f"Using published checkpoint {config.hf_model}"
+            f"{f'@{config.hf_revision}' if config.hf_revision else ''}: "
+            f"backbone={config.backbone_name}, image_size={config.image_size}, "
+            f"weights={config.evaluate_model_path}"
+        )
+
     print(
         "Config loaded: "
         f"run={config.wandb_run}, backbone={config.backbone_name}, "
@@ -63,10 +81,15 @@ def main():
     )
 
     # Log model info
-    if config.evaluate_model_path and config.evaluate_model_path.strip() and os.path.exists(config.evaluate_model_path):
+    if config.hf_model:
+        # Reference the published repo instead of re-uploading weights that are already public
+        model_name = f"hf:{config.hf_model}" + (f"@{config.hf_revision}" if config.hf_revision else "")
+        print(f"Using published checkpoint weights: {model_name}")
+        wandb.log({"model/name": model_name})
+    elif config.evaluate_model_path and config.evaluate_model_path.strip() and os.path.exists(config.evaluate_model_path):
         print(f"Using checkpoint weights from: {config.evaluate_model_path}")
         artifact = wandb.Artifact('used_model', type='model')
-        artifact.add_file(config.evaluate_model_path)  
+        artifact.add_file(config.evaluate_model_path)
         run.log_artifact(artifact)
         wandb.log({"model/name": f"{config.evaluate_model_path}"})
     else:

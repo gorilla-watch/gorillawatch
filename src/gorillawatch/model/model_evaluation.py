@@ -322,7 +322,12 @@ def evaluate_model(model_path, query_loader, query_dataset, config, gallery_load
 
     # Load the model weights only if a valid path is provided
     if not is_zero_shot:
-        state_dict = torch.load(model_path, map_location=embedding_model.device, weights_only=False)
+        if model_path.endswith(".safetensors"):
+            # Published checkpoint: same tensors as the .pth, different container.
+            from safetensors.torch import load_file
+            state_dict = load_file(model_path, device=str(embedding_model.device))
+        else:
+            state_dict = torch.load(model_path, map_location=embedding_model.device, weights_only=False)
         # remove the prefix "module." from the keys of the state_dict
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
         embedding_model.load_state_dict(state_dict)
