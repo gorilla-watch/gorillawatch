@@ -9,9 +9,9 @@ GorillaWatch is a comprehensive automated system for in-the-wild gorilla re-iden
 ## Key Contributions
 
 - **Novel Benchmark Datasets**: Three large-scale, in-the-wild datasets for gorilla analysis:
-  - **Gorilla-SPAC-Wild**: Largest video dataset for wild primate re-identification
-  - **Gorilla-Berlin-Zoo**: Cross-domain re-identification generalization assessment
-  - **Gorilla-SPAC-MoT**: Multi-object tracking in camera trap footage
+  - [**Gorilla-SPAC-Wild**](https://huggingface.co/datasets/gorilla-watch/Gorilla-SPAC-Wild): Largest video dataset for wild primate re-identification
+  - [**Gorilla-Zoo-Berlin**](https://huggingface.co/datasets/gorilla-watch/Gorilla-Zoo-Berlin): Cross-domain re-identification generalization assessment
+  - [**Gorilla-SPAC-MoT**](https://huggingface.co/datasets/gorilla-watch/Gorilla-SPAC_MoT): Multi-object tracking in camera trap footage
 
 - **End-to-End Detection & Tracking Pipeline**: Integrated framework for automatic gorilla detection, tracking, and re-identification from video
 
@@ -37,14 +37,21 @@ The GorillaWatch system comprises:
 
 ### Requirements
 
-- Docker
+- Docker (with the NVIDIA container runtime for GPU support)
 
 ### Setup
 
-**Using Docker:**
+All commands run inside the container built from the provided `Dockerfile`. The image is built automatically the first time you use the helper script:
+
 ```bash
+# Open a shell in the container on GPU 0
 ./scripts/run-in-docker.sh -g 0
+
+# Or run a script directly, e.g. training on GPU 1
+./scripts/run-in-docker.sh -g 1 ./scripts/train.sh
 ```
+
+The project is mounted at `/workspaces/gorillawatch`, `pip install -e .` runs before your command. W&B credentials are picked up from `$WANDB_API_KEY` or `~/.netrc` (run `wandb login` once on the host).
 
 ## Project Structure
 
@@ -73,8 +80,8 @@ The easiest way to train a model is using the provided shell script:
 This trains a ViT-Small DINOv2 model on the Gorilla-SPAC-Wild dataset with paper-compliant hyperparameters:
 - **Batch size**: 8 (effective: 48 with 6 gradient accumulation steps)
 - **Epochs**: 100 with early stopping (patience=10)
-- **Learning rate**: 1.9×10⁻⁶ (cosine schedule)
-- **Regularization**: L2=0.0059, L2SP=1.3×10⁻⁷
+- **Learning rate**: 1.9×10⁻⁷ (cosine schedule)
+- **Regularization**: L2=0.0059, L2SP=1.3×10⁻⁵
 - **Loss**: Hard triplet mining with margin=0.647
 - **Evaluation frequency**: Every 10 epochs (configurable via `EVAL_FREQUENCY`)
 
@@ -86,21 +93,40 @@ python src/gorillawatch/train_and_eval.py \
   --wandb_run "my_experiment" \
   --backbone_name vit_small_patch14_dinov2.lvd142m \
   --dataset "gorilla-watch/Gorilla-SPAC-Wild" \
-  --dataset_config "face" \
+  --dataset_config "face_with_body" \
+  --image_size 518
   --epochs 100 \
   --batch_size 8 \
-  --lr 0.0000019 \
+  --lr 0.00000019 \
   --eval_frequency 10
 ```
 
 The dataset will be automatically downloaded from HuggingFace on first run.
 
-### Evaluating a Fine-Tuned Model
+### Evaluating Fine-Tuned Models from HuggingFace
 
-Evaluate a trained checkpoint:
+To evaluate our models published on huggingface use the prepared bash script:
 
 ```bash
-./scripts/eval_fine_tuned.sh
+./scripts/eval_hf_fine_tuned.sh
+```
+
+Or directly via the python script:
+
+```bash
+python src/gorillawatch/evaluate.py \
+  --hf_model "gorilla-watch/GorillaWatch-DINOv2-Giant" \
+  --dataset "gorilla-watch/Gorilla-SPAC-Wild" \
+  --dataset_config "face_with_body" \
+  --batch_size 8
+```
+
+### Evaluating a Fine-Tuned Model
+
+Evaluate a local trained checkpoint:
+
+```bash
+./scripts/eval_local_fine_tuned.sh
 ```
 
 Or evaluate specific checkpoints:
@@ -112,6 +138,7 @@ python src/gorillawatch/evaluate.py \
   --dataset "gorilla-watch/Gorilla-SPAC-Wild" \
   --dataset_config "face" \
   --batch_size 8
+  --image_size 518
 ```
 
 ### Zero-Shot Evaluation
@@ -164,5 +191,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-We thank the collaborators and data providers who made this research possible. The work was conducted in collaboration with wildlife conservation organizations to ensure practical impact on endangered species monitoring.
-
+The project on which this report is based was funded by the Federal Ministry of Research, Technology and Space under the funding code “KI-Servicezentrum Berlin-Brandenburg” 16IS22092. We acknowledge the support of Sabine Plattner African Charities (SPAC) for their funding to this research. We are grateful to Zoo Berlin for their expert assistance and facility access. This collaboration enabled the development of AI tools capable of being deployed in the wild to directly support gorilla conservation. The responsibility for the content of this publication remains with the authors.
