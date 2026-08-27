@@ -82,20 +82,12 @@ RUN /usr/local/bin/_dockerfile_initialize_user_accounts.sh && \
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
-    make \
     bash-completion \
-    postgresql-client \
-    libcurl4 \
     htop \
     curl \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 RUN echo "source /usr/share/bash-completion/bash_completion" >> /root/.bashrc
-
-# Install nvm for our frontend
-ENV NVM_DIR=/root/.nvm
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.1/install.sh | bash 
-RUN . $NVM_DIR/nvm.sh && nvm install --lts
 
 USER $MAMBA_USER
 
@@ -131,11 +123,3 @@ RUN micromamba run -n research pip install opencv-python-headless --force --no-d
 
 # Set environment variable for default conda environment
 ENV ENV_NAME=research
-
-RUN pip install flash-attn==2.8.2 --no-build-isolation --use-pep517
-
-# Install drop_layer_norm for InternVideo
-# WORKDIR /home/${MAMBA_USER}
-# RUN git clone https://github.com/Dao-AILab/flash-attention.git && \
-    # cd flash-attention/csrc/layer_norm && \
-    # pip install .
