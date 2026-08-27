@@ -9,8 +9,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
 # Configuration
-BACKBONE="vit_large_patch14_dinov2.lvd142m" 
-CHECKPOINT_PATH="saved_checkpoints/vit_large_patch14_dinov2.lvd142m_fine_tuned.pth"
+BACKBONE="vit_giant_patch14_dinov2.lvd142m" 
+CHECKPOINT_PATH="saved_checkpoints/vit_giant_patch14_dinov2.lvd142m_fine_tuned.pth"
 IMAGE_SIZE=518
 
 DATASET="gorilla-watch/Gorilla-SPAC-Wild" # or our Berlin Zoo dataset "gorilla-watch/Gorilla-Zoo-Berlin"
