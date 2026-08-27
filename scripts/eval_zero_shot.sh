@@ -1,5 +1,5 @@
 #!/bin/bash
-# Zero-shot evaluation on smallest DINOv2 and DINOv3 models
+# Zero-shot evaluation on a variety of models with face_and_body config
 
 set -e
 #pip install -e .
@@ -21,6 +21,10 @@ TRAIN_VAL_RATIO=0.2
 # Create results directory
 RESULTS_DIR="eval_results"
 mkdir -p "$RESULTS_DIR"
+
+# WandB configuration
+WANDB_ENTITY=""
+WANDB_PROJECT=""
 
 # Models to evaluate
 declare -a MODELS=(
@@ -78,12 +82,12 @@ for model in "${MODELS[@]}"; do
 
     # Run evaluation
     python src/gorillawatch/evaluate.py \
-        --wandb_entity "gorillawatch" \
-        --wandb_project "Zero-Shot-Eval" \
+        --wandb_entity "$WANDB_ENTITY" \
+        --wandb_project "$WANDB_PROJECT" \
         --wandb_run "$RUN_NAME" \
         --seed $SEED \
         --dataset "gorilla-watch/Gorilla-SPAC-Wild" \
-        --dataset_config "face" \
+        --dataset_config "face_with_body" \
         --num_workers $NUM_WORKERS \
         --train_val_ratio $TRAIN_VAL_RATIO \
         --batch_size $BATCH_SIZE \

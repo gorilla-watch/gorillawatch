@@ -170,10 +170,10 @@ def train_and_val_model(train_loader, train_val_loader, val_loader, val_dataset,
             
         if wandb_run and rank == 0:
             wandb.log({
-                "train_loss": train_loss,
-                "val_loss": val_loss,
-                "learning_rate": scheduler.get_last_lr()[0],
-                "best_val_loss": best_val_loss,
+                "train/loss": train_loss,
+                "val/loss": val_loss,
+                "train/learning_rate": scheduler.get_last_lr()[0],
+                "val/best_loss": best_val_loss,
             })  
         
         if val_loss < best_val_loss:
@@ -202,7 +202,7 @@ def train_and_val_model(train_loader, train_val_loader, val_loader, val_dataset,
         if config.eval_frequency > 0 and (epoch + 1) % config.eval_frequency == 0 and rank == 0:
             if verbose:
                 print(f"Running evaluation at epoch {epoch + 1}...")
-            eval_micro, eval_macro = evaluate_model(
+            eval_micro, eval_macro, _, _ = evaluate_model(
                 config.best_model_path,
                 val_loader,
                 val_dataset,
@@ -215,11 +215,11 @@ def train_and_val_model(train_loader, train_val_loader, val_loader, val_dataset,
                 print(f"Epoch {epoch + 1} Evaluation - Micro: {eval_micro:.4f}, Macro: {eval_macro:.4f}")
             if wandb_run:
                 wandb.log({
-                    f"eval_micro_epoch_{epoch+1}": eval_micro,
-                    f"eval_macro_epoch_{epoch+1}": eval_macro,
+                    "val/accuracy/micro": eval_micro,
+                    "val/accuracy/macro": eval_macro,
                 })
 
-    micro_accuracy, macro_accuracy = evaluate_model(config.best_model_path, val_loader, val_dataset, config, gallery_loader=gallery_loader, split="val", verbose=verbose)
+    micro_accuracy, macro_accuracy, _, _ = evaluate_model(config.best_model_path, val_loader, val_dataset, config, gallery_loader=gallery_loader, split="val", verbose=verbose)
 
     if rank == 0:
         if verbose:
@@ -228,10 +228,10 @@ def train_and_val_model(train_loader, train_val_loader, val_loader, val_dataset,
 
         if wandb_run:
             wandb.log({
-                "knn_cv_accuracy_micro": micro_accuracy,
-                "knn_cv_accuracy_macro": macro_accuracy,
-                "best_model_path": config.best_model_path,
-                "total_epochs": epoch + 1
+                "val/final/accuracy/micro": micro_accuracy,
+                "val/final/accuracy/macro": macro_accuracy,
+                "train/best_model_path": config.best_model_path,
+                "train/total_epochs": epoch + 1
             })
     
     if config.use_ddp:

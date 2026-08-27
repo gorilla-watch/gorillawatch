@@ -1,5 +1,5 @@
 #!/bin/bash
-# Fine-tune ViT-Small DINOv2 model on Gorilla-SPAC-Wild dataset
+# Fine-tune ViT-Giant DINOv2 model on Gorilla-SPAC-Wild dataset
 
 set -e
 
@@ -8,16 +8,17 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
 # Configuration
-BACKBONE="vit_small_patch14_dinov2.lvd142m"
+BACKBONE="vit_giant_patch14_dinov2.lvd142m"
 DATASET="gorilla-watch/Gorilla-SPAC-Wild"
-DATASET_CONFIG="face"
-IMAGE_SIZE=224
+DATASET_CONFIG="face_with_body"
+
+IMAGE_SIZE=518
 BATCH_SIZE=8
 NUM_WORKERS=4
 K=5
 SEED=42
 EPOCHS=100
-LR=0.0000019
+LR=0.00000019
 GRADIENT_ACCUMULATION_STEPS=6
 EVAL_FREQUENCY=10  # Evaluate every N epochs (0 = only at end)
 
@@ -26,9 +27,9 @@ BEST_MODEL_PATH="saved_checkpoints/${BACKBONE}_fine_tuned.pth"
 PRETRAINED_WEIGHTS_PATH="pretrained_weights/${BACKBONE}.pth"
 
 # WandB configuration
-WANDB_ENTITY="gorillawatch"
-WANDB_PROJECT="GorillaWatch-Training"
-WANDB_RUN="${BACKBONE}_fine_tuned"
+WANDB_ENTITY=""
+WANDB_PROJECT=""
+WANDB_RUN=""
 
 echo "========================================"
 echo "Fine-tuning Gorilla Re-ID Model"
@@ -61,7 +62,7 @@ python src/gorillawatch/train_and_eval.py \
     --lr $LR \
     --k $K \
     --epochs $EPOCHS \
-    --early_stopping_patience 10 \
+    --early_stopping_patience 100 \
     --eval_frequency $EVAL_FREQUENCY \
     --use_ddp False
 

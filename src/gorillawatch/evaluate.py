@@ -7,6 +7,7 @@ from torch.utils.data import ConcatDataset, DataLoader
 
 from data_hf.data_loading import prepare_data
 from model.model_evaluation import evaluate_model
+from model.hf_checkpoint import resolve_hf_checkpoint
 from utils.determinism_helper import set_deterministic_seeds
 
 
@@ -27,7 +28,11 @@ def parse_args():
     argparser.add_argument('--k', type=int, default=5, help='number of neighbors')
     argparser.add_argument('--backbone_name', type=str, default="vit_small_patch14_dinov2.lvd142m", help='backbone model name from timm')
     argparser.add_argument('--evaluate_model_path', type=str, default="", help='path to fine-tuned checkpoint (optional, uses pre-trained if not provided)')
+    argparser.add_argument('--hf_model', type=str, default="", help='published checkpoint to evaluate: HuggingFace repo id (e.g. gorilla-watch/GorillaWatch-DINOv2-Large) or a local directory holding config.json + model.safetensors. Overrides --backbone_name, --image_size and --evaluate_model_path.')
+    argparser.add_argument('--hf_revision', type=str, default=None, help='revision (branch, tag or commit sha) of --hf_model')
     argparser.add_argument('--cross_video_only', action='store_true', help='use cross-video masking only (default is cross-encounter: same camera+date)')
+    argparser.add_argument('--pool_tracklets', action='store_true', help='pool embeddings by tracklet (class+video) for evaluation')
+    argparser.add_argument('--pooling_method', type=str, default='average', choices=['average', 'max', 'median'], help='pooling method for tracklets')
     return argparser.parse_args()
 
 def setup_paths(config):
@@ -39,11 +44,27 @@ def main():
     total_start = time.time()
     print("Starting evaluation script")
     config = parse_args()
+
+    # image_size and backbone name are pulled from the given HugginfFace model, to avoid mismatches
+    if config.hf_model:
+        hf_config, config.evaluate_model_path = resolve_hf_checkpoint(
+            config.hf_model, revision=config.hf_revision
+        )
+        config.backbone_name = hf_config["backbone_name"]
+        config.image_size = hf_config["img_size"]
+        print(
+            f"Using published checkpoint {config.hf_model}"
+            f"{f'@{config.hf_revision}' if config.hf_revision else ''}: "
+            f"backbone={config.backbone_name}, image_size={config.image_size}, "
+            f"weights={config.evaluate_model_path}"
+        )
+
     print(
         "Config loaded: "
         f"run={config.wandb_run}, backbone={config.backbone_name}, "
         f"model_path={'set' if config.evaluate_model_path else 'none'}, "
-        f"batch_size={config.batch_size}, workers={config.num_workers}, image_size={config.image_size}, k={config.k}"
+        f"batch_size={config.batch_size}, workers={config.num_workers}, image_size={config.image_size}, k={config.k}, "
+        f"pool_tracklets={config.pool_tracklets}, pooling_method={config.pooling_method if config.pool_tracklets else 'N/A'}"
     )
 
     print("Setting deterministic seeds")
@@ -60,15 +81,20 @@ def main():
     )
 
     # Log model info
-    if config.evaluate_model_path and config.evaluate_model_path.strip() and os.path.exists(config.evaluate_model_path):
+    if config.hf_model:
+        # Reference the published repo instead of re-uploading weights that are already public
+        model_name = f"hf:{config.hf_model}" + (f"@{config.hf_revision}" if config.hf_revision else "")
+        print(f"Using published checkpoint weights: {model_name}")
+        wandb.log({"model/name": model_name})
+    elif config.evaluate_model_path and config.evaluate_model_path.strip() and os.path.exists(config.evaluate_model_path):
         print(f"Using checkpoint weights from: {config.evaluate_model_path}")
         artifact = wandb.Artifact('used_model', type='model')
-        artifact.add_file(config.evaluate_model_path)  
+        artifact.add_file(config.evaluate_model_path)
         run.log_artifact(artifact)
-        wandb.log({"Model": f"{config.evaluate_model_path}"})
+        wandb.log({"model/name": f"{config.evaluate_model_path}"})
     else:
         print(f"Using pre-trained backbone weights from timm: {config.backbone_name}")
-        wandb.log({"Model": f"Pre-trained: {config.backbone_name}"})
+        wandb.log({"model/name": f"Pre-trained: {config.backbone_name}"})
 
     print("Preparing data splits and dataloaders (this can take time on first run)")
     data_start = time.time()
@@ -77,7 +103,6 @@ def main():
         dataset_config=config.dataset_config,
         batch_size=config.batch_size,
         num_workers=config.num_workers,
-        train_val_ratio=config.train_val_ratio,
         seed=config.seed,
         image_size=config.image_size,
         k=config.k,
@@ -127,16 +152,28 @@ def main():
         
         split_start = time.time()
         cross_encounter = not config.cross_video_only  # Default is cross-encounter, flag disables it
-        micro_accuracy, macro_accuracy = evaluate_model(config.evaluate_model_path, loader, dataset, config, gallery_loader, split=split, verbose=True, cross_encounter=cross_encounter)
+        micro_accuracy, macro_accuracy, tracklet_micro_accuracy, tracklet_macro_accuracy = evaluate_model(
+            config.evaluate_model_path, loader, dataset, config, gallery_loader, split=split, verbose=True, 
+            cross_encounter=cross_encounter, pool_tracklets=config.pool_tracklets, 
+            pooling_method=config.pooling_method
+        )
         split_duration = time.time() - split_start
         print(f"Finished split='{split}' in {split_duration:.1f}s")
-        print(f"  Micro accuracy: {micro_accuracy:.4f}")
-        print(f"  Macro accuracy: {macro_accuracy:.4f}")
+        print(f"  Image-based Micro accuracy: {micro_accuracy:.4f}")
+        print(f"  Image-based Macro accuracy: {macro_accuracy:.4f}")
+        if config.pool_tracklets:
+            print(f"  Tracklet-based Micro accuracy: {tracklet_micro_accuracy:.4f}")
+            print(f"  Tracklet-based Macro accuracy: {tracklet_macro_accuracy:.4f}")
         wandb.log({
-            f"{split}/knn_cv_accuracy_micro": micro_accuracy,
-            f"{split}/knn_cv_accuracy_macro": macro_accuracy,
-            f"{split}/split_duration": split_duration
+            f"{split}/accuracy/micro": micro_accuracy,
+            f"{split}/accuracy/macro": macro_accuracy,
+            f"{split}/duration": split_duration
         })
+        if config.pool_tracklets:
+            wandb.log({
+                f"{split}/tracklet/accuracy/micro": tracklet_micro_accuracy,
+                f"{split}/tracklet/accuracy/macro": tracklet_macro_accuracy,
+            })
 
     total_duration = time.time() - total_start
     print(f"Evaluation script completed in {total_duration:.1f}s")

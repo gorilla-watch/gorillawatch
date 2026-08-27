@@ -54,11 +54,13 @@ def prepare_data(
     random_seed = seed
     
     file_names = get_image_file_names(data_path)
-    all_labels, all_videos = extract_labels_and_videos(file_names)
+    all_labels, all_videos, all_dates, all_cameras = extract_labels_and_videos(file_names)
 
-    # Encode labels and video names before data split
+    # Encode labels, videos, dates, and cameras before data split
     label_to_idx = {label: i for i, label in enumerate(sorted(set(all_labels)))}
     video_to_idx = {video: i for i, video in enumerate(sorted(set(all_videos)))}
+    date_to_idx = {date: i for i, date in enumerate(sorted(set(all_dates)))}
+    camera_to_idx = {camera: i for i, camera in enumerate(sorted(set(all_cameras)))}
     
     splits = ['train', 'val', 'test']
     if split_path: 
@@ -87,7 +89,7 @@ def prepare_data(
 
     transform = get_transform(image_size) 
     datasets = {
-        split_name: GorillaDataset(data_path, files, transform=transform, k=k,label_to_idx=label_to_idx, video_to_idx=video_to_idx) 
+        split_name: GorillaDataset(data_path, files, transform=transform, k=k, label_to_idx=label_to_idx, video_to_idx=video_to_idx, date_to_idx=date_to_idx, camera_to_idx=camera_to_idx)
         for split_name, files in split_files.items()
     }
 

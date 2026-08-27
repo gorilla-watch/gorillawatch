@@ -161,7 +161,6 @@ src/gorillawatch/lightning_logs/
 /dataset/
 .devcontainer/devcontainer.json
 .vscode/settings.json
-scripts/run-in-docker.sh
 
 
 

@@ -22,6 +22,10 @@ TRAIN_VAL_RATIO=0.2
 RESULTS_DIR="eval_results_zoo"
 mkdir -p "$RESULTS_DIR"
 
+# WandB configuration
+WANDB_ENTITY=""
+WANDB_PROJECT=""
+
 # Models to evaluate
 declare -a MODELS=(
     "efficientnetv2_rw_m.agc_in1k"
@@ -80,17 +84,18 @@ for model in "${MODELS[@]}"; do
 
     # Run evaluation
     python src/gorillawatch/evaluate.py \
-        --wandb_entity "gorillawatch" \
-        --wandb_project "Zero-Shot-Eval-Zoo" \
+        --wandb_entity "$WANDB_ENTITY" \
+        --wandb_project "$WANDB_PROJECT" \
         --wandb_run "$RUN_NAME" \
         --seed $SEED \
         --dataset "gorilla-watch/Gorilla-Zoo-Berlin" \
-        --dataset_config "face_and_body" \
+        --dataset_config "face_with_body" \
         --num_workers $NUM_WORKERS \
         --train_val_ratio $TRAIN_VAL_RATIO \
         --batch_size $BATCH_SIZE \
         --image_size $MODEL_IMAGE_SIZE \
         --k $K \
+        --pool_tracklets --pooling_method "average" \
         --backbone_name "$model" 2>&1 | tee "$RESULTS_DIR/${model}_${TIMESTAMP}.log"
 
     echo "Completed: $model"
