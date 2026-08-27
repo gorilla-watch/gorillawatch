@@ -18,7 +18,7 @@
 set -e
 
 # Default values
-image="gorillawatch:1.2"
+image="gorillawatch:1.0"
 command="bash"
 gpus="none"
 

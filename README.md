@@ -53,6 +53,8 @@ All commands run inside the container built from the provided `Dockerfile`. The 
 
 The project is mounted at `/workspaces/gorillawatch`, `pip install -e .` runs before your command. W&B credentials are picked up from `$WANDB_API_KEY` or `~/.netrc` (run `wandb login` once on the host).
 
+Building the image requires [BuildKit](https://docs.docker.com/build/buildkit/)/`buildx` to be installed.
+
 ## Project Structure
 
 ```
